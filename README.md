@@ -1,1 +1,0 @@
-# tk_school_manager
