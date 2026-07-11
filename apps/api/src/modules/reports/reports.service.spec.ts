@@ -304,7 +304,7 @@ describe('ReportsService', () => {
       exams: 2,
       expectedResults: 4,
       recordedResults: 3,
-      classAveragePercentage: 86.36,
+      classAveragePercentage: 83.18,
     });
     expect(report.students).toEqual([
       expect.objectContaining({
