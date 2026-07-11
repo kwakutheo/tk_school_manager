@@ -20,18 +20,24 @@ export class UsersService {
     this.ensureCanManageRole(currentUser, dto.role);
 
     const schoolId = this.resolveSchoolIdForCreate(currentUser, dto);
+    await this.ensurePlatformTargetSchoolExists(currentUser, schoolId);
+
     const passwordHash = await hashPassword(dto.password);
 
-    const user = await this.prisma.user.create({
-      data: {
-        email: this.normalizeEmail(dto.email),
-        passwordHash,
-        role: dto.role as PrismaRole,
-        schoolId,
-      },
-    });
+    try {
+      const user = await this.prisma.user.create({
+        data: {
+          email: this.normalizeEmail(dto.email),
+          passwordHash,
+          role: dto.role as PrismaRole,
+          schoolId,
+        },
+      });
 
-    return this.toPublicUser(user);
+      return this.toPublicUser(user);
+    } catch (error) {
+      this.handleKnownPrismaError(error);
+    }
   }
 
   async findAll(currentUser: IAuthenticatedUser, schoolId?: string): Promise<IUserPublic[]> {
@@ -76,6 +82,8 @@ export class UsersService {
         ? existing.schoolId
         : this.resolveSchoolIdForUpdate(currentUser, nextRole, dto.schoolId);
 
+    await this.ensurePlatformTargetSchoolExists(currentUser, nextSchoolId);
+
     const data: Prisma.UserUpdateInput = {
       ...(dto.email ? { email: this.normalizeEmail(dto.email) } : {}),
       ...(dto.password ? { passwordHash: await hashPassword(dto.password) } : {}),
@@ -84,12 +92,16 @@ export class UsersService {
       school: nextSchoolId ? { connect: { id: nextSchoolId } } : { disconnect: true },
     };
 
-    const updated = await this.prisma.user.update({
-      where: { id },
-      data,
-    });
+    try {
+      const updated = await this.prisma.user.update({
+        where: { id },
+        data,
+      });
 
-    return this.toPublicUser(updated);
+      return this.toPublicUser(updated);
+    } catch (error) {
+      this.handleKnownPrismaError(error);
+    }
   }
 
   async softDelete(currentUser: IAuthenticatedUser, id: string): Promise<IUserPublic> {
@@ -221,6 +233,24 @@ export class UsersService {
     }
   }
 
+  private async ensurePlatformTargetSchoolExists(
+    currentUser: IAuthenticatedUser,
+    schoolId: string | null,
+  ): Promise<void> {
+    if (!schoolId || !isPlatformRole(currentUser.role)) {
+      return;
+    }
+
+    const school = await this.prisma.school.findUnique({
+      where: { id: schoolId },
+      select: { id: true, isActive: true },
+    });
+
+    if (!school?.isActive) {
+      throw new BadRequestException('School is inactive or does not exist');
+    }
+  }
+
   private ensureTenantAccess(currentUser: IAuthenticatedUser, targetSchoolId: string | null): void {
     if (isPlatformRole(currentUser.role)) {
       return;
@@ -233,6 +263,24 @@ export class UsersService {
 
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
+  }
+
+  private handleKnownPrismaError(error: unknown): never {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2002') {
+        throw new BadRequestException('A user with this email already exists');
+      }
+
+      if (error.code === 'P2003') {
+        throw new BadRequestException('Referenced school does not exist');
+      }
+
+      if (error.code === 'P2025') {
+        throw new NotFoundException('User not found');
+      }
+    }
+
+    throw error;
   }
 
   private toPublicUser(user: User): IUserPublic {

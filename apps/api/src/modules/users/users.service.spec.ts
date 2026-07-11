@@ -1,5 +1,5 @@
-import { ForbiddenException } from '@nestjs/common';
-import { Role as PrismaRole, User } from '@prisma/client';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Prisma, Role as PrismaRole, User } from '@prisma/client';
 import { Role } from '@school-saas/config';
 import { IAuthenticatedUser } from '@school-saas/types';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
@@ -25,6 +25,9 @@ function createUser(overrides: Partial<User> = {}): User {
 
 function createPrismaMock() {
   return {
+    school: {
+      findUnique: jest.fn<() => Promise<{ id: string; isActive: boolean } | null>>(),
+    },
     user: {
       create: jest.fn<() => Promise<User>>(),
       findMany: jest.fn<() => Promise<User[]>>(),
@@ -32,6 +35,13 @@ function createPrismaMock() {
       update: jest.fn<() => Promise<User>>(),
     },
   };
+}
+
+function knownPrismaError(code: string): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError('Known Prisma error', {
+    code,
+    clientVersion: 'test',
+  });
 }
 
 describe('UsersService', () => {
@@ -128,6 +138,34 @@ describe('UsersService', () => {
         schoolId: null,
       }),
     });
+  });
+
+  it('requires SUPER_ADMIN school-scoped user targets to exist', async () => {
+    prisma.school.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.create(superAdmin, {
+        email: 'teacher@example.com',
+        password: 'SecurePass123',
+        role: Role.TEACHER,
+        schoolId: SCHOOL_A,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.user.create).not.toHaveBeenCalled();
+  });
+
+  it('returns a clean error for duplicate emails', async () => {
+    prisma.user.create.mockRejectedValue(knownPrismaError('P2002'));
+
+    await expect(
+      service.create(schoolAdmin, {
+        email: 'teacher@example.com',
+        password: 'SecurePass123',
+        role: Role.TEACHER,
+        schoolId: SCHOOL_A,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('blocks school-scoped user listing outside the current school', async () => {
