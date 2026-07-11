@@ -18,6 +18,7 @@ import { IAuthenticatedUser } from '@school-saas/types';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FinanceService } from './finance.service';
+import { PaymentProviderRegistry } from './payment-providers/payment-provider.types';
 
 const SCHOOL_A = '00000000-0000-0000-0000-000000000010';
 const SCHOOL_B = '00000000-0000-0000-0000-000000000020';
@@ -186,7 +187,7 @@ describe('FinanceService', () => {
 
   beforeEach(() => {
     prisma = createPrismaMock();
-    service = new FinanceService(prisma as unknown as PrismaService);
+    service = new FinanceService(prisma as unknown as PrismaService, {} as PaymentProviderRegistry);
   });
 
   it('creates a fee invoice for an active student enrollment', async () => {
