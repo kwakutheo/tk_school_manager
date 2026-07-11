@@ -16,6 +16,7 @@ import { getEnvFilePaths } from './config/env-files';
 import { envValidationSchema } from './config/env.config';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { SchoolsModule } from './modules/schools/schools.module';
 import { StaffModule } from './modules/staff/staff.module';
 import { StudentsModule } from './modules/students/students.module';
@@ -37,6 +38,7 @@ import { UsersModule } from './modules/users/users.module';
     ExamsModule,
     UsersModule,
     NotificationsModule,
+    ReportsModule,
     SchoolsModule,
     StaffModule,
     ClassesModule,

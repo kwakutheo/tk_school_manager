@@ -31,4 +31,8 @@ export const API_ROUTES = {
     BY_ID: (id: string) => `/exams/${id}`,
     RESULTS: (id: string) => `/exams/${id}/results`,
   },
+  REPORTS: {
+    STUDENT_TERM: (studentId: string) => `/reports/students/${studentId}/term`,
+    CLASS_TERM: (classId: string) => `/reports/classes/${classId}/term`,
+  },
 } as const;
