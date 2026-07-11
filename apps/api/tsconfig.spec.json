@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@school-saas/config": ["../../packages/config/src"],
+      "@school-saas/types": ["../../packages/types/src"]
+    },
+    "types": ["jest", "node"]
+  },
+  "include": ["src/**/*.ts", "jest.config.ts"]
+}

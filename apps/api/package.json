@@ -1,0 +1,52 @@
+{
+  "name": "@school-saas/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch",
+    "start": "node dist/main.js",
+    "lint": "eslint \"src/**/*.ts\" \"prisma/**/*.ts\" \"prisma.config.ts\"",
+    "test": "jest --config jest.config.ts",
+    "test:watch": "jest --config jest.config.ts --watch",
+    "test:cov": "jest --config jest.config.ts --coverage",
+    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
+    "prisma:migrate": "prisma migrate dev --schema prisma/schema.prisma",
+    "prisma:studio": "prisma studio --schema prisma/schema.prisma",
+    "seed": "prisma db seed --schema prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.28",
+    "@nestjs/config": "^4.0.4",
+    "@nestjs/core": "^11.1.28",
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/passport": "^11.0.5",
+    "@nestjs/platform-express": "^11.1.28",
+    "@prisma/client": "6.19.3",
+    "@school-saas/config": "workspace:*",
+    "@school-saas/types": "workspace:*",
+    "bcrypt": "^6.0.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "express": "^5.1.0",
+    "joi": "^18.2.3",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@jest/globals": "29.7.0",
+    "@nestjs/cli": "^11.0.24",
+    "@types/bcrypt": "^6.0.0",
+    "@types/express": "^5.0.0",
+    "@types/jest": "29.5.14",
+    "@types/passport-jwt": "^4.0.1",
+    "dotenv": "^16.5.0",
+    "jest": "29.7.0",
+    "prisma": "6.19.3",
+    "ts-jest": "29.4.0",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0"
+  }
+}
