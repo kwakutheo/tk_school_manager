@@ -11,9 +11,9 @@ This repository has a stable Phase 1 foundation, Phase 2 core entities, and has 
 - Hashed, revocable refresh-token storage
 - Tenant-aware user model
 - RBAC role taxonomy
-- Schools, users, auth, audit-log, classes, students, staff, attendance, and notifications modules
+- Schools, users, auth, audit-log, classes, students, staff, attendance, notifications, and dashboards modules
 - Phase 2 core-entity foundation for schools, classes, students, and staff
-- Phase 3 daily-operations foundation with attendance sessions and school-scoped notifications
+- Phase 3 daily-operations foundation with attendance sessions, school-scoped notifications, and basic dashboard summaries
 
 ## Workspace Layout
 

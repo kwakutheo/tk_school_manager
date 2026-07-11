@@ -1,6 +1,7 @@
 export * from './attendance.types';
 export * from './auth.types';
 export * from './class.types';
+export * from './dashboard.types';
 export * from './notification.types';
 export * from './school.types';
 export * from './staff.types';
