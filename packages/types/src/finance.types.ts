@@ -1,4 +1,10 @@
-import { AcademicTerm, FeeInvoiceStatus, PaymentMethod, PaymentStatus } from '@school-saas/config';
+import {
+  AcademicTerm,
+  FeeInvoiceStatus,
+  PaymentMethod,
+  PaymentProvider,
+  PaymentStatus,
+} from '@school-saas/config';
 
 export interface IFeeInvoice {
   id: string;
@@ -28,6 +34,11 @@ export interface IFeePayment {
   amount: number;
   method: PaymentMethod;
   status: PaymentStatus;
+  provider: PaymentProvider | null;
+  providerTransactionId: string | null;
+  providerReference: string | null;
+  providerStatus: string | null;
+  providerMetadata: unknown | null;
   reference: string | null;
   notes: string | null;
   paidAt: Date;

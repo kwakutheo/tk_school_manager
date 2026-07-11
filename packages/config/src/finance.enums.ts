@@ -19,3 +19,7 @@ export enum PaymentStatus {
   FAILED = 'FAILED',
   REVERSED = 'REVERSED',
 }
+
+export enum PaymentProvider {
+  MTN_MOMO = 'MTN_MOMO',
+}

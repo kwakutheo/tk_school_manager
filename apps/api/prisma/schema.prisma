@@ -92,6 +92,10 @@ enum PaymentStatus {
   REVERSED
 }
 
+enum PaymentProvider {
+  MTN_MOMO
+}
+
 model School {
   id                 String              @id @default(uuid()) @db.Uuid
   name               String
@@ -407,6 +411,11 @@ model FeePayment {
   amount              Decimal           @db.Decimal(10, 2)
   method              PaymentMethod
   status              PaymentStatus     @default(COMPLETED)
+  provider            PaymentProvider?
+  providerTransactionId String?         @map("provider_transaction_id")
+  providerReference   String?           @map("provider_reference")
+  providerStatus      String?           @map("provider_status")
+  providerMetadata    Json?             @map("provider_metadata")
   reference           String?
   notes               String?
   paidAt              DateTime          @default(now()) @map("paid_at")
@@ -416,8 +425,10 @@ model FeePayment {
   updatedAt           DateTime          @updatedAt @map("updated_at")
 
   @@unique([schoolId, reference])
+  @@unique([provider, providerTransactionId])
   @@index([schoolId, paidAt])
   @@index([schoolId, status])
+  @@index([schoolId, provider, status])
   @@index([invoiceId, status])
   @@index([studentId, paidAt])
   @@index([studentEnrollmentId])

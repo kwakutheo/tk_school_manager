@@ -41,6 +41,8 @@ export const API_ROUTES = {
     GENERATE_INVOICES: '/finance/invoices/generate',
     INVOICE_BY_ID: (id: string) => `/finance/invoices/${id}`,
     INVOICE_PAYMENTS: (id: string) => `/finance/invoices/${id}/payments`,
+    INVOICE_MOBILE_MONEY_PAYMENTS: (id: string) =>
+      `/finance/invoices/${id}/mobile-money-payments`,
     PAYMENTS: '/finance/payments',
     REVERSE_PAYMENT: (id: string) => `/finance/payments/${id}/reverse`,
   },

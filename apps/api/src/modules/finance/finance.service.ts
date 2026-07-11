@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -11,15 +12,18 @@ import {
   FeeInvoiceStatus as PrismaFeeInvoiceStatus,
   FeePayment,
   PaymentMethod as PrismaPaymentMethod,
+  PaymentProvider as PrismaPaymentProvider,
   PaymentStatus as PrismaPaymentStatus,
   Prisma,
 } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import {
   ADMIN_TIER_ROLES,
   AcademicTerm,
   FeeInvoiceStatus,
   isPlatformRole,
   PaymentMethod,
+  PaymentProvider,
   PaymentStatus,
   Role,
 } from '@school-saas/config';
@@ -34,7 +38,12 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateFeeInvoiceDto } from './dto/create-fee-invoice.dto';
 import { GenerateFeeInvoicesDto } from './dto/generate-fee-invoices.dto';
+import { InitiateMobileMoneyPaymentDto } from './dto/initiate-mobile-money-payment.dto';
 import { RecordFeePaymentDto } from './dto/record-fee-payment.dto';
+import {
+  PAYMENT_PROVIDER_REGISTRY,
+  PaymentProviderRegistry,
+} from './payment-providers/payment-provider.types';
 
 interface ListFeeInvoicesFilters {
   schoolId?: string;
@@ -49,6 +58,7 @@ interface ListFeePaymentsFilters {
   invoiceId?: string;
   studentId?: string;
   method?: string;
+  provider?: string;
   status?: string;
 }
 
@@ -94,11 +104,17 @@ type FeePaymentWithInvoiceModel = FeePayment & {
   invoice: FeeInvoiceWithPaymentsModel;
 };
 
+type FinancePrismaClient = PrismaService | Prisma.TransactionClient;
+
 export const FINANCE_ACCESS_ROLES = [...ADMIN_TIER_ROLES, Role.ACCOUNTANT] as const;
 
 @Injectable()
 export class FinanceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(PAYMENT_PROVIDER_REGISTRY)
+    private readonly paymentProviders: PaymentProviderRegistry,
+  ) {}
 
   async createInvoice(
     currentUser: IAuthenticatedUser,
@@ -106,6 +122,8 @@ export class FinanceService {
   ): Promise<IFeeInvoice> {
     const schoolId = this.resolveSchoolId(currentUser, dto.schoolId);
     const academicYear = this.clean(dto.academicYear);
+    const amount = this.toMoneyAmount(dto.amount, 'Invoice amount');
+    const dueDate = this.toDateOnly(dto.dueDate, 'due date');
     const enrollment = await this.getActiveEnrollmentForInvoice(
       schoolId,
       dto.studentId,
@@ -123,8 +141,8 @@ export class FinanceService {
           term: dto.term as PrismaAcademicTerm,
           title: this.clean(dto.title),
           description: this.optionalClean(dto.description),
-          dueDate: this.toDateOnly(dto.dueDate),
-          amount: dto.amount,
+          dueDate,
+          amount,
           status: PrismaFeeInvoiceStatus.OPEN,
           createdById: currentUser.id,
         },
@@ -146,6 +164,8 @@ export class FinanceService {
     const schoolId = this.resolveSchoolId(currentUser, dto.schoolId);
     const academicYear = this.clean(dto.academicYear);
     const title = this.clean(dto.title);
+    const amount = this.toMoneyAmount(dto.amount, 'Invoice amount');
+    const dueDate = this.toDateOnly(dto.dueDate, 'due date');
     const schoolClass = await this.getClassScope(dto.classId);
 
     this.ensureClassCanReceiveInvoices(schoolClass, schoolId, academicYear);
@@ -193,6 +213,8 @@ export class FinanceService {
         dto,
         academicYear,
         title,
+        dueDate,
+        amount,
         currentUser.id,
       );
 
@@ -257,6 +279,7 @@ export class FinanceService {
   ): Promise<IFeePayment[]> {
     const schoolId = this.resolveSchoolId(currentUser, filters.schoolId);
     const method = this.optionalEnumValue(PaymentMethod, filters.method, 'method');
+    const provider = this.optionalEnumValue(PaymentProvider, filters.provider, 'provider');
     const status = this.optionalEnumValue(PaymentStatus, filters.status, 'status');
 
     if (filters.invoiceId) {
@@ -273,6 +296,7 @@ export class FinanceService {
         ...(filters.invoiceId ? { invoiceId: filters.invoiceId } : {}),
         ...(filters.studentId ? { studentId: filters.studentId } : {}),
         ...(method ? { method: method as PrismaPaymentMethod } : {}),
+        ...(provider ? { provider: provider as PrismaPaymentProvider } : {}),
         ...(status ? { status: status as PrismaPaymentStatus } : {}),
       },
       orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }],
@@ -309,6 +333,9 @@ export class FinanceService {
     invoiceId: string,
     dto: RecordFeePaymentDto,
   ): Promise<IFeePayment> {
+    const status = this.resolveNewPaymentStatus(dto.status);
+    const amount = this.toMoneyAmount(dto.amount, 'Payment amount');
+    const paidAt = dto.paidAt ? this.parseDate(dto.paidAt, 'payment date') : new Date();
     const invoice = await this.getInvoiceWithPayments(invoiceId);
 
     this.ensureTenantAccess(currentUser, invoice.schoolId);
@@ -317,46 +344,156 @@ export class FinanceService {
       throw new BadRequestException('Cancelled invoices cannot receive payments');
     }
 
-    const status = dto.status ?? PaymentStatus.COMPLETED;
-    const amount = this.round2(dto.amount);
-
     if (status === PaymentStatus.COMPLETED && amount > this.invoiceBalance(invoice)) {
       throw new BadRequestException('Completed payment cannot exceed the outstanding balance');
     }
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        const payment = await tx.feePayment.create({
-          data: {
-            schoolId: invoice.schoolId,
-            invoiceId: invoice.id,
-            studentId: invoice.studentId,
-            studentEnrollmentId: invoice.studentEnrollmentId,
-            amount,
-            method: dto.method as PrismaPaymentMethod,
-            status: status as PrismaPaymentStatus,
-            reference: this.optionalClean(dto.reference),
-            notes: this.optionalClean(dto.notes),
-            paidAt: dto.paidAt ? new Date(dto.paidAt) : new Date(),
-            recordedById: currentUser.id,
-          },
-        });
+      return await this.prisma.$transaction(
+        async (tx) => {
+          const currentInvoice = await this.getInvoiceWithPayments(invoiceId, tx);
 
-        if (status === PaymentStatus.COMPLETED) {
-          const totalPaid = this.round2(this.completedPaymentTotal(invoice.payments) + amount);
+          if (currentInvoice.status === PrismaFeeInvoiceStatus.CANCELLED) {
+            throw new BadRequestException('Cancelled invoices cannot receive payments');
+          }
 
-          await tx.feeInvoice.update({
-            where: { id: invoice.id },
+          if (status === PaymentStatus.COMPLETED && amount > this.invoiceBalance(currentInvoice)) {
+            throw new BadRequestException('Completed payment cannot exceed the outstanding balance');
+          }
+
+          const payment = await tx.feePayment.create({
             data: {
-              status: this.invoiceStatusForPaymentTotal(Number(invoice.amount), totalPaid),
+              schoolId: currentInvoice.schoolId,
+              invoiceId: currentInvoice.id,
+              studentId: currentInvoice.studentId,
+              studentEnrollmentId: currentInvoice.studentEnrollmentId,
+              amount,
+              method: dto.method as PrismaPaymentMethod,
+              status: status as PrismaPaymentStatus,
+              reference: this.optionalClean(dto.reference),
+              notes: this.optionalClean(dto.notes),
+              paidAt,
+              recordedById: currentUser.id,
             },
           });
-        }
 
-        return this.toFeePayment(payment);
-      });
+          if (status === PaymentStatus.COMPLETED) {
+            const totalPaid = this.round2(
+              this.completedPaymentTotal(currentInvoice.payments) + amount,
+            );
+
+            await tx.feeInvoice.update({
+              where: { id: currentInvoice.id },
+              data: {
+                status: this.invoiceStatusForPaymentTotal(Number(currentInvoice.amount), totalPaid),
+              },
+            });
+          }
+
+          return this.toFeePayment(payment);
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
     } catch (error) {
       this.handleKnownPrismaError(error, 'A payment with the same reference already exists');
+    }
+  }
+
+  async initiateMobileMoneyPayment(
+    currentUser: IAuthenticatedUser,
+    invoiceId: string,
+    dto: InitiateMobileMoneyPaymentDto,
+  ): Promise<IFeePayment> {
+    const provider = dto.provider ?? PaymentProvider.MTN_MOMO;
+    const paymentProvider = this.getPaymentProvider(provider);
+    const amount = this.toMoneyAmount(dto.amount, 'Payment amount');
+    const payerPhoneNumber = this.normalizePhoneNumber(dto.payerPhoneNumber);
+    const providerTransactionId = randomUUID();
+    const reference = this.optionalClean(dto.reference) ?? providerTransactionId;
+    const notes = this.optionalClean(dto.notes);
+    const invoice = await this.getInvoiceWithPayments(invoiceId);
+
+    this.ensureTenantAccess(currentUser, invoice.schoolId);
+
+    if (invoice.status === PrismaFeeInvoiceStatus.CANCELLED) {
+      throw new BadRequestException('Cancelled invoices cannot receive payments');
+    }
+
+    if (amount > this.invoiceAvailableCollectionBalance(invoice)) {
+      throw new BadRequestException(
+        'Mobile money payment cannot exceed the available invoice balance',
+      );
+    }
+
+    let payment: FeePayment;
+
+    try {
+      payment = await this.prisma.$transaction(
+        async (tx) => {
+          const currentInvoice = await this.getInvoiceWithPayments(invoiceId, tx);
+
+          if (currentInvoice.status === PrismaFeeInvoiceStatus.CANCELLED) {
+            throw new BadRequestException('Cancelled invoices cannot receive payments');
+          }
+
+          if (amount > this.invoiceAvailableCollectionBalance(currentInvoice)) {
+            throw new BadRequestException(
+              'Mobile money payment cannot exceed the available invoice balance',
+            );
+          }
+
+          return tx.feePayment.create({
+            data: {
+              schoolId: currentInvoice.schoolId,
+              invoiceId: currentInvoice.id,
+              studentId: currentInvoice.studentId,
+              studentEnrollmentId: currentInvoice.studentEnrollmentId,
+              amount,
+              method: PrismaPaymentMethod.MOBILE_MONEY,
+              status: PrismaPaymentStatus.PENDING,
+              provider: provider as PrismaPaymentProvider,
+              providerTransactionId,
+              providerReference: null,
+              providerStatus: 'CREATED',
+              providerMetadata: null,
+              reference,
+              notes,
+              paidAt: new Date(),
+              recordedById: currentUser.id,
+            },
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      this.handleKnownPrismaError(error, 'A payment with the same reference already exists');
+    }
+
+    try {
+      const result = await paymentProvider.initiatePayment({
+        amount,
+        description: this.mobileMoneyDescription(invoice),
+        invoiceId: invoice.id,
+        payerPhoneNumber,
+        providerTransactionId,
+        reference,
+        schoolId: invoice.schoolId,
+        studentId: invoice.studentId,
+      });
+
+      const updated = await this.prisma.feePayment.update({
+        where: { id: payment.id },
+        data: {
+          providerReference: result.providerReference,
+          providerStatus: result.providerStatus,
+          ...(result.metadata ? { providerMetadata: result.metadata } : {}),
+        },
+      });
+
+      return this.toFeePayment(updated);
+    } catch (error) {
+      await this.markProviderPaymentFailed(payment.id, error);
+      throw error;
     }
   }
 
@@ -493,6 +630,8 @@ export class FinanceService {
     dto: GenerateFeeInvoicesDto,
     academicYear: string,
     title: string,
+    dueDate: Date,
+    amount: number,
     createdById: string,
   ): Promise<FeeInvoice[]> {
     if (!enrollments.length) {
@@ -500,7 +639,6 @@ export class FinanceService {
     }
 
     const description = this.optionalClean(dto.description);
-    const dueDate = this.toDateOnly(dto.dueDate);
 
     return this.prisma.$transaction(async (tx) => {
       const createdInvoices: FeeInvoice[] = [];
@@ -516,7 +654,7 @@ export class FinanceService {
             title,
             description,
             dueDate,
-            amount: dto.amount,
+            amount,
             status: PrismaFeeInvoiceStatus.OPEN,
             createdById,
           },
@@ -597,8 +735,11 @@ export class FinanceService {
     };
   }
 
-  private async getInvoiceWithPayments(id: string): Promise<FeeInvoiceWithPaymentsModel> {
-    const invoice = await this.prisma.feeInvoice.findUnique({
+  private async getInvoiceWithPayments(
+    id: string,
+    client: FinancePrismaClient = this.prisma,
+  ): Promise<FeeInvoiceWithPaymentsModel> {
+    const invoice = await client.feeInvoice.findUnique({
       where: { id },
       include: {
         payments: {
@@ -655,6 +796,49 @@ export class FinanceService {
     }
   }
 
+  private getPaymentProvider(provider: PaymentProvider) {
+    const paymentProvider = this.paymentProviders[provider];
+
+    if (!paymentProvider) {
+      throw new BadRequestException('Payment provider is not supported');
+    }
+
+    return paymentProvider;
+  }
+
+  private async markProviderPaymentFailed(paymentId: string, error: unknown): Promise<void> {
+    await this.prisma.feePayment
+      .update({
+        where: { id: paymentId },
+        data: {
+          status: PrismaPaymentStatus.FAILED,
+          providerStatus: 'FAILED',
+          providerMetadata: this.providerFailureMetadata(error),
+        },
+      })
+      .catch(() => undefined);
+  }
+
+  private providerFailureMetadata(error: unknown): Prisma.InputJsonObject {
+    return {
+      error: error instanceof Error ? error.message : 'Payment provider request failed',
+    };
+  }
+
+  private mobileMoneyDescription(invoice: FeeInvoice): string {
+    return `School fee payment: ${invoice.title}`;
+  }
+
+  private normalizePhoneNumber(value: string): string {
+    const normalized = value.replace(/[\s-]/g, '');
+
+    if (!/^\+?[0-9]{8,15}$/.test(normalized)) {
+      throw new BadRequestException('Invalid mobile money phone number');
+    }
+
+    return normalized;
+  }
+
   private optionalEnumValue<T extends Record<string, string>>(
     enumObject: T,
     value: string | undefined,
@@ -685,17 +869,46 @@ export class FinanceService {
       return null;
     }
 
+    return this.parseDate(value, 'date');
+  }
+
+  private toDateOnly(value: string, fieldName: string): Date {
+    return this.parseDate(value, fieldName);
+  }
+
+  private parseDate(value: string, fieldName: string): Date {
     const date = new Date(value);
 
     if (Number.isNaN(date.getTime())) {
-      throw new BadRequestException('Invalid finance date');
+      throw new BadRequestException(`Invalid finance ${fieldName}`);
     }
 
     return date;
   }
 
-  private toDateOnly(value: string): Date {
-    return new Date(value);
+  private resolveNewPaymentStatus(status: PaymentStatus | undefined): PaymentStatus {
+    const paymentStatus =
+      this.optionalEnumValue(PaymentStatus, status, 'payment status') ?? PaymentStatus.COMPLETED;
+
+    if (paymentStatus === PaymentStatus.REVERSED) {
+      throw new BadRequestException('New payments cannot be recorded as reversed');
+    }
+
+    return paymentStatus;
+  }
+
+  private toMoneyAmount(value: number, fieldName: string): number {
+    if (!Number.isFinite(value) || value < 0.01 || value > 999999.99) {
+      throw new BadRequestException(`${fieldName} must be between 0.01 and 999999.99`);
+    }
+
+    const cents = value * 100;
+
+    if (Math.abs(cents - Math.round(cents)) > 1e-9) {
+      throw new BadRequestException(`${fieldName} can have at most two decimal places`);
+    }
+
+    return this.round2(value);
   }
 
   private completedPaymentTotal(payments: FeePayment[]): number {
@@ -709,6 +922,28 @@ export class FinanceService {
   private invoiceBalance(invoice: FeeInvoiceWithPaymentsModel): number {
     return this.round2(
       Math.max(Number(invoice.amount) - this.completedPaymentTotal(invoice.payments), 0),
+    );
+  }
+
+  private invoiceAvailableCollectionBalance(invoice: FeeInvoiceWithPaymentsModel): number {
+    return this.round2(
+      Math.max(
+        Number(invoice.amount) -
+          this.completedPaymentTotal(invoice.payments) -
+          this.pendingProviderPaymentTotal(invoice.payments),
+        0,
+      ),
+    );
+  }
+
+  private pendingProviderPaymentTotal(payments: FeePayment[]): number {
+    return this.round2(
+      payments
+        .filter(
+          (payment) =>
+            payment.status === PrismaPaymentStatus.PENDING && payment.provider !== null,
+        )
+        .reduce((sum, payment) => sum + Number(payment.amount), 0),
     );
   }
 

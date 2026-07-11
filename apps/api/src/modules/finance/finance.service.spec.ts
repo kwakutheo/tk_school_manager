@@ -243,6 +243,38 @@ describe('FinanceService', () => {
     expect(prisma.studentEnrollment.findFirst).not.toHaveBeenCalled();
   });
 
+  it('rejects invoice amounts with more than two decimal places before querying enrollments', async () => {
+    await expect(
+      service.createInvoice(accountant, {
+        studentId: STUDENT_ID,
+        academicYear: ACADEMIC_YEAR,
+        term: AcademicTerm.FIRST_TERM,
+        title: 'Tuition',
+        dueDate: '2026-09-01',
+        amount: 1000.005,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.studentEnrollment.findFirst).not.toHaveBeenCalled();
+    expect(prisma.feeInvoice.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid invoice due dates before querying enrollments', async () => {
+    await expect(
+      service.createInvoice(accountant, {
+        studentId: STUDENT_ID,
+        academicYear: ACADEMIC_YEAR,
+        term: AcademicTerm.FIRST_TERM,
+        title: 'Tuition',
+        dueDate: 'not-a-date',
+        amount: 1000,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.studentEnrollment.findFirst).not.toHaveBeenCalled();
+    expect(prisma.feeInvoice.create).not.toHaveBeenCalled();
+  });
+
   it('generates class invoices for active enrollments and skips existing invoices', async () => {
     prisma.schoolClass.findUnique.mockResolvedValue(createClassScope());
     prisma.studentEnrollment.findMany.mockResolvedValue([
@@ -613,6 +645,67 @@ describe('FinanceService', () => {
         status: PrismaFeeInvoiceStatus.PARTIALLY_PAID,
       },
     });
+  });
+
+  it('rejects new payments recorded directly as reversed', async () => {
+    await expect(
+      service.recordPayment(accountant, INVOICE_ID, {
+        amount: 100,
+        method: PaymentMethod.CASH,
+        status: PaymentStatus.REVERSED,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.feeInvoice.findUnique).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid payment dates before loading the invoice', async () => {
+    await expect(
+      service.recordPayment(accountant, INVOICE_ID, {
+        amount: 100,
+        method: PaymentMethod.CASH,
+        paidAt: 'not-a-date',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.feeInvoice.findUnique).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale completed overpayments inside the payment transaction', async () => {
+    prisma.feeInvoice.findUnique
+      .mockResolvedValueOnce(
+        createInvoiceWithPayments({}, [
+          createPayment({
+            id: '00000000-0000-0000-0000-000000000071',
+            amount: new Prisma.Decimal(800),
+            status: PrismaPaymentStatus.COMPLETED,
+          }),
+        ]),
+      )
+      .mockResolvedValueOnce(
+        createInvoiceWithPayments({}, [
+          createPayment({
+            id: '00000000-0000-0000-0000-000000000071',
+            amount: new Prisma.Decimal(950),
+            status: PrismaPaymentStatus.COMPLETED,
+          }),
+        ]),
+      );
+
+    await expect(
+      service.recordPayment(accountant, INVOICE_ID, {
+        amount: 100,
+        method: PaymentMethod.CASH,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(prisma.feePayment.create).not.toHaveBeenCalled();
+    expect(prisma.feeInvoice.update).not.toHaveBeenCalled();
   });
 
   it('prevents completed overpayments', async () => {
