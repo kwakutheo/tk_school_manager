@@ -13,6 +13,7 @@ import { getEnvFilePaths } from './config/env-files';
 import { envValidationSchema } from './config/env.config';
 import { PrismaModule } from './prisma/prisma.module';
 import { SchoolsModule } from './modules/schools/schools.module';
+import { StaffModule } from './modules/staff/staff.module';
 import { StudentsModule } from './modules/students/students.module';
 import { UsersModule } from './modules/users/users.module';
 
@@ -28,6 +29,7 @@ import { UsersModule } from './modules/users/users.module';
     AuthModule,
     UsersModule,
     SchoolsModule,
+    StaffModule,
     ClassesModule,
     StudentsModule,
   ],

@@ -46,6 +46,7 @@ model School {
   createdAt          DateTime            @default(now()) @map("created_at")
   updatedAt          DateTime            @updatedAt @map("updated_at")
   users              User[]
+  staff              StaffProfile[]
   classes            SchoolClass[]
   students           StudentProfile[]
   studentEnrollments StudentEnrollment[]
@@ -68,11 +69,36 @@ model User {
   refreshTokens   RefreshToken[]
   auditLogs       AuditLog[]
   teachingClasses SchoolClass[]   @relation("ClassTeacher")
+  staffProfile    StaffProfile?   @relation("StaffUser")
   studentProfile  StudentProfile? @relation("StudentUser")
 
   @@index([schoolId, role])
   @@index([schoolId, isActive])
   @@map("users")
+}
+
+model StaffProfile {
+  id          String    @id @default(uuid()) @db.Uuid
+  schoolId    String    @map("school_id") @db.Uuid
+  school      School    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  userId      String?   @unique @map("user_id") @db.Uuid
+  user        User?     @relation("StaffUser", fields: [userId], references: [id], onDelete: SetNull)
+  staffNumber String    @map("staff_number")
+  firstName   String    @map("first_name")
+  middleName  String?   @map("middle_name")
+  lastName    String    @map("last_name")
+  phoneNumber String?   @map("phone_number")
+  jobTitle    String?   @map("job_title")
+  department  String?
+  hireDate    DateTime? @map("hire_date") @db.Date
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@unique([schoolId, staffNumber])
+  @@index([schoolId, isActive])
+  @@index([schoolId, lastName, firstName])
+  @@map("staff")
 }
 
 model SchoolClass {

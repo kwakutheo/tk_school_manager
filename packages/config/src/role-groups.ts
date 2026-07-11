@@ -29,12 +29,13 @@ export const SUPPORT_STAFF_ROLES = [
   Role.IT_ADMIN,
 ] as const;
 
-export const SCHOOL_SCOPED_ROLES = [
+export const STAFF_ROLES = [
   ...SCHOOL_ADMIN_ROLES,
   ...TEACHING_ROLES,
-  ...STUDENT_GUARDIAN_ROLES,
   ...SUPPORT_STAFF_ROLES,
 ] as const;
+
+export const SCHOOL_SCOPED_ROLES = [...STAFF_ROLES, ...STUDENT_GUARDIAN_ROLES] as const;
 
 export const ADMIN_TIER_ROLES = [
   Role.SUPER_ADMIN,
@@ -52,4 +53,8 @@ export function isPlatformRole(role: Role): boolean {
 
 export function isSchoolScopedRole(role: Role): boolean {
   return SCHOOL_SCOPED_ROLES.includes(role as (typeof SCHOOL_SCOPED_ROLES)[number]);
+}
+
+export function isStaffRole(role: Role): boolean {
+  return STAFF_ROLES.includes(role as (typeof STAFF_ROLES)[number]);
 }
