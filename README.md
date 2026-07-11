@@ -73,6 +73,16 @@ corepack pnpm --filter @school-saas/api dev
 
 ## Verification
 
+Run the full local quality gate before pushing backend changes:
+
+```bash
+corepack pnpm check
+```
+
+This runs Prisma schema validation, lint, tests, and build in the same order used by CI.
+
+Individual checks:
+
 ```bash
 corepack pnpm build
 corepack pnpm lint
@@ -84,6 +94,14 @@ Prisma schema validation:
 ```bash
 corepack pnpm --filter @school-saas/api exec prisma validate --schema prisma/schema.prisma
 ```
+
+## Development Rules
+
+Keep Prisma schema changes and migration files together in the same commit.
+
+Run `corepack pnpm check` before pushing.
+
+Keep tenant isolation in API services. Every school-scoped query should resolve the current user's school context before reading or writing data.
 
 ## Architecture Notes
 
