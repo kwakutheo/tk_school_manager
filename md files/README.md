@@ -2,7 +2,7 @@
 
 Production-grade multi-school SaaS foundation for school management.
 
-This repository has a stable Phase 1 foundation and has started Phase 2:
+This repository has a stable Phase 1 foundation, Phase 2 core entities, and has started Phase 3 daily operations:
 
 - Turborepo monorepo
 - NestJS API
@@ -11,8 +11,9 @@ This repository has a stable Phase 1 foundation and has started Phase 2:
 - Hashed, revocable refresh-token storage
 - Tenant-aware user model
 - RBAC role taxonomy
-- Schools, users, auth, audit-log, classes, students, and staff modules
+- Schools, users, auth, audit-log, classes, students, staff, attendance, and notifications modules
 - Phase 2 core-entity foundation for schools, classes, students, and staff
+- Phase 3 daily-operations foundation with attendance sessions and school-scoped notifications
 
 ## Workspace Layout
 

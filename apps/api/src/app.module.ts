@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { AttendanceModule } from './modules/attendance/attendance.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { ClassesModule } from './modules/classes/classes.module';
@@ -11,6 +12,7 @@ import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { getEnvFilePaths } from './config/env-files';
 import { envValidationSchema } from './config/env.config';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { SchoolsModule } from './modules/schools/schools.module';
 import { StaffModule } from './modules/staff/staff.module';
@@ -26,8 +28,10 @@ import { UsersModule } from './modules/users/users.module';
     }),
     PrismaModule,
     AuditLogModule,
+    AttendanceModule,
     AuthModule,
     UsersModule,
+    NotificationsModule,
     SchoolsModule,
     StaffModule,
     ClassesModule,
