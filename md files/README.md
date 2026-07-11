@@ -2,7 +2,7 @@
 
 Production-grade multi-school SaaS foundation for school management.
 
-This repository has a stable Phase 1 foundation, Phase 2 core entities, and has started Phase 3 daily operations:
+This repository has a stable Phase 1 foundation, Phase 2 core entities, Phase 3 daily operations, and has started Phase 4 academics:
 
 - Turborepo monorepo
 - NestJS API
@@ -11,9 +11,10 @@ This repository has a stable Phase 1 foundation, Phase 2 core entities, and has 
 - Hashed, revocable refresh-token storage
 - Tenant-aware user model
 - RBAC role taxonomy
-- Schools, users, auth, audit-log, classes, students, staff, attendance, notifications, and dashboards modules
+- Schools, users, auth, audit-log, classes, students, staff, attendance, notifications, dashboards, subjects, and exams modules
 - Phase 2 core-entity foundation for schools, classes, students, and staff
 - Phase 3 daily-operations foundation with attendance sessions, school-scoped notifications, and basic dashboard summaries
+- Phase 4 academics foundation with school-scoped subjects, exams, and result recording
 
 ## Workspace Layout
 
@@ -80,7 +81,7 @@ Run the full local quality gate before pushing backend changes:
 corepack pnpm check
 ```
 
-This runs Prisma schema validation, lint, tests, and build in the same order used by CI.
+This runs Prisma schema validation, Prisma client generation, lint, tests, and build in the same order used by CI.
 
 Individual checks:
 

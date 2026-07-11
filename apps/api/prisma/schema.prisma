@@ -58,6 +58,18 @@ enum NotificationStatus {
   FAILED
 }
 
+enum AcademicTerm {
+  FIRST_TERM
+  SECOND_TERM
+  THIRD_TERM
+}
+
+enum ExamStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
 model School {
   id                 String              @id @default(uuid()) @db.Uuid
   name               String
@@ -72,6 +84,9 @@ model School {
   studentEnrollments StudentEnrollment[]
   attendanceSessions AttendanceSession[]
   attendanceEntries  AttendanceEntry[]
+  subjects           Subject[]
+  exams              Exam[]
+  examResults        ExamResult[]
   notifications      Notification[]
   auditLogs          AuditLog[]
 
@@ -95,6 +110,8 @@ model User {
   staffProfile         StaffProfile?       @relation("StaffUser")
   studentProfile       StudentProfile?     @relation("StudentUser")
   attendanceTaken      AttendanceSession[] @relation("AttendanceTakenBy")
+  examsCreated         Exam[]              @relation("ExamCreatedBy")
+  examResultsRecorded  ExamResult[]        @relation("ExamResultRecordedBy")
   notificationsCreated Notification[]      @relation("NotificationCreatedBy")
   notifications        Notification[]      @relation("NotificationRecipient")
 
@@ -143,6 +160,7 @@ model SchoolClass {
   updatedAt          DateTime            @updatedAt @map("updated_at")
   enrollments        StudentEnrollment[]
   attendanceSessions AttendanceSession[]
+  exams              Exam[]
 
   @@unique([schoolId, name, academicYear])
   @@unique([schoolId, code])
@@ -168,6 +186,7 @@ model StudentProfile {
   updatedAt         DateTime            @updatedAt @map("updated_at")
   enrollments       StudentEnrollment[]
   attendanceEntries AttendanceEntry[]
+  examResults       ExamResult[]
 
   @@unique([schoolId, admissionNumber])
   @@index([schoolId, isActive])
@@ -190,6 +209,7 @@ model StudentEnrollment {
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")
   attendanceEntries AttendanceEntry[]
+  examResults       ExamResult[]
 
   @@unique([studentId, classId, academicYear])
   @@index([schoolId, academicYear, status])
@@ -240,6 +260,78 @@ model AttendanceEntry {
   @@index([schoolId, status])
   @@index([studentEnrollmentId])
   @@map("attendance_entries")
+}
+
+model Subject {
+  id          String   @id @default(uuid()) @db.Uuid
+  schoolId    String   @map("school_id") @db.Uuid
+  school      School   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  name        String
+  code        String?
+  department  String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  exams       Exam[]
+
+  @@unique([schoolId, name])
+  @@unique([schoolId, code])
+  @@index([schoolId, isActive])
+  @@map("subjects")
+}
+
+model Exam {
+  id           String       @id @default(uuid()) @db.Uuid
+  schoolId     String       @map("school_id") @db.Uuid
+  school       School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  classId      String       @map("class_id") @db.Uuid
+  schoolClass  SchoolClass  @relation(fields: [classId], references: [id], onDelete: Restrict)
+  subjectId    String       @map("subject_id") @db.Uuid
+  subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  academicYear String       @map("academic_year")
+  term         AcademicTerm
+  title        String
+  examDate     DateTime     @map("exam_date") @db.Date
+  maxScore     Decimal      @map("max_score") @db.Decimal(5, 2)
+  weight       Decimal?     @db.Decimal(5, 2)
+  status       ExamStatus   @default(DRAFT)
+  createdById  String?      @map("created_by_id") @db.Uuid
+  createdBy    User?        @relation("ExamCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  results      ExamResult[]
+
+  @@unique([schoolId, classId, subjectId, academicYear, term, title])
+  @@index([schoolId, academicYear, term])
+  @@index([classId, academicYear, term])
+  @@index([subjectId])
+  @@index([createdById])
+  @@map("exams")
+}
+
+model ExamResult {
+  id                  String            @id @default(uuid()) @db.Uuid
+  schoolId            String            @map("school_id") @db.Uuid
+  school              School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  examId              String            @map("exam_id") @db.Uuid
+  exam                Exam              @relation(fields: [examId], references: [id], onDelete: Cascade)
+  studentId           String            @map("student_id") @db.Uuid
+  student             StudentProfile    @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  studentEnrollmentId String            @map("student_enrollment_id") @db.Uuid
+  studentEnrollment   StudentEnrollment @relation(fields: [studentEnrollmentId], references: [id], onDelete: Restrict)
+  score               Decimal           @db.Decimal(5, 2)
+  grade               String?
+  remarks             String?
+  recordedById        String?           @map("recorded_by_id") @db.Uuid
+  recordedBy          User?             @relation("ExamResultRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+
+  @@unique([examId, studentId])
+  @@index([schoolId, studentId])
+  @@index([studentEnrollmentId])
+  @@index([recordedById])
+  @@map("exam_results")
 }
 
 model Notification {

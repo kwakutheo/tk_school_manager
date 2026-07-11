@@ -1,3 +1,4 @@
+export * from './academic.enums';
 export * from './attendance.enums';
 export * from './api-routes';
 export * from './constants';

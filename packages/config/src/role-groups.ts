@@ -47,6 +47,8 @@ export const ADMIN_TIER_ROLES = [
   Role.ADMIN_OFFICER,
 ] as const;
 
+export const ACADEMIC_MANAGEMENT_ROLES = [...ADMIN_TIER_ROLES, Role.EXAM_OFFICER] as const;
+
 export function isPlatformRole(role: Role): boolean {
   return PLATFORM_ROLES.includes(role as (typeof PLATFORM_ROLES)[number]);
 }

@@ -6,6 +6,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { ClassesModule } from './modules/classes/classes.module';
 import { DashboardsModule } from './modules/dashboards/dashboards.module';
+import { ExamsModule } from './modules/exams/exams.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -18,6 +19,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { SchoolsModule } from './modules/schools/schools.module';
 import { StaffModule } from './modules/staff/staff.module';
 import { StudentsModule } from './modules/students/students.module';
+import { SubjectsModule } from './modules/subjects/subjects.module';
 import { UsersModule } from './modules/users/users.module';
 
 @Module({
@@ -32,12 +34,14 @@ import { UsersModule } from './modules/users/users.module';
     AttendanceModule,
     AuthModule,
     DashboardsModule,
+    ExamsModule,
     UsersModule,
     NotificationsModule,
     SchoolsModule,
     StaffModule,
     ClassesModule,
     StudentsModule,
+    SubjectsModule,
   ],
   providers: [
     {
