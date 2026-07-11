@@ -39,3 +39,33 @@ export interface IFeePayment {
 export interface IFeeInvoiceWithPayments extends IFeeInvoice {
   payments: IFeePayment[];
 }
+
+export interface IFeeInvoiceGenerationResult {
+  schoolId: string;
+  classId: string;
+  academicYear: string;
+  term: AcademicTerm;
+  title: string;
+  requestedEnrollments: number;
+  createdInvoices: number;
+  skippedExistingInvoices: number;
+  invoices: IFeeInvoice[];
+}
+
+export interface IFinanceSummary {
+  schoolId: string;
+  academicYear: string | null;
+  term: AcademicTerm | null;
+  asOfDate: Date;
+  totals: {
+    invoices: number;
+    openInvoices: number;
+    partiallyPaidInvoices: number;
+    paidInvoices: number;
+    cancelledInvoices: number;
+    totalInvoiced: number;
+    totalPaid: number;
+    outstandingBalance: number;
+    overdueBalance: number;
+  };
+}

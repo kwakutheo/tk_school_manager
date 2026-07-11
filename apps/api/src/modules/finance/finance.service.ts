@@ -26,11 +26,14 @@ import {
 import {
   IAuthenticatedUser,
   IFeeInvoice,
+  IFeeInvoiceGenerationResult,
   IFeeInvoiceWithPayments,
   IFeePayment,
+  IFinanceSummary,
 } from '@school-saas/types';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateFeeInvoiceDto } from './dto/create-fee-invoice.dto';
+import { GenerateFeeInvoicesDto } from './dto/generate-fee-invoices.dto';
 import { RecordFeePaymentDto } from './dto/record-fee-payment.dto';
 
 interface ListFeeInvoicesFilters {
@@ -49,6 +52,13 @@ interface ListFeePaymentsFilters {
   status?: string;
 }
 
+interface FinanceSummaryFilters {
+  schoolId?: string;
+  academicYear?: string;
+  term?: string;
+  asOfDate?: string;
+}
+
 interface EnrollmentScope {
   id: string;
   schoolId: string;
@@ -65,8 +75,23 @@ interface EnrollmentScope {
   };
 }
 
+interface ClassFinanceScope {
+  schoolId: string;
+  academicYear: string;
+  isActive: boolean;
+}
+
+interface EnrollmentForInvoiceGeneration {
+  id: string;
+  studentId: string;
+}
+
 type FeeInvoiceWithPaymentsModel = FeeInvoice & {
   payments: FeePayment[];
+};
+
+type FeePaymentWithInvoiceModel = FeePayment & {
+  invoice: FeeInvoiceWithPaymentsModel;
 };
 
 export const FINANCE_ACCESS_ROLES = [...ADMIN_TIER_ROLES, Role.ACCOUNTANT] as const;
@@ -110,6 +135,82 @@ export class FinanceService {
       this.handleKnownPrismaError(
         error,
         'A fee invoice with the same student, term, and title already exists',
+      );
+    }
+  }
+
+  async generateInvoices(
+    currentUser: IAuthenticatedUser,
+    dto: GenerateFeeInvoicesDto,
+  ): Promise<IFeeInvoiceGenerationResult> {
+    const schoolId = this.resolveSchoolId(currentUser, dto.schoolId);
+    const academicYear = this.clean(dto.academicYear);
+    const title = this.clean(dto.title);
+    const schoolClass = await this.getClassScope(dto.classId);
+
+    this.ensureClassCanReceiveInvoices(schoolClass, schoolId, academicYear);
+
+    const enrollments = await this.prisma.studentEnrollment.findMany({
+      where: {
+        schoolId,
+        classId: dto.classId,
+        academicYear,
+        status: PrismaEnrollmentStatus.ACTIVE,
+        student: {
+          isActive: true,
+        },
+      },
+      select: {
+        id: true,
+        studentId: true,
+      },
+      orderBy: [{ enrolledAt: 'asc' }],
+    });
+    const studentIds = enrollments.map((enrollment) => enrollment.studentId);
+    const existingInvoices = studentIds.length
+      ? await this.prisma.feeInvoice.findMany({
+          where: {
+            schoolId,
+            studentId: { in: studentIds },
+            academicYear,
+            term: dto.term as PrismaAcademicTerm,
+            title,
+          },
+          select: {
+            studentId: true,
+          },
+        })
+      : [];
+    const existingStudentIds = new Set(existingInvoices.map((invoice) => invoice.studentId));
+    const invoiceTargets = enrollments.filter(
+      (enrollment) => !existingStudentIds.has(enrollment.studentId),
+    );
+
+    try {
+      const createdInvoices = await this.createInvoicesForEnrollments(
+        invoiceTargets,
+        schoolId,
+        dto,
+        academicYear,
+        title,
+        currentUser.id,
+      );
+
+      return {
+        schoolId,
+        classId: dto.classId,
+        academicYear,
+        term: dto.term,
+        title,
+        requestedEnrollments: enrollments.length,
+        createdInvoices: createdInvoices.length,
+        skippedExistingInvoices: enrollments.length - invoiceTargets.length,
+        invoices: createdInvoices.map((invoice) => this.toFeeInvoice(invoice)),
+      };
+    } catch (error) {
+      this.handleKnownPrismaError(
+        error,
+        'One or more fee invoices with the same student, term, and title already exist',
       );
     }
   }
@@ -180,6 +281,29 @@ export class FinanceService {
     return payments.map((payment) => this.toFeePayment(payment));
   }
 
+  async getSummary(
+    currentUser: IAuthenticatedUser,
+    filters: FinanceSummaryFilters = {},
+  ): Promise<IFinanceSummary> {
+    const schoolId = this.resolveSchoolId(currentUser, filters.schoolId);
+    const term = this.optionalEnumValue(AcademicTerm, filters.term, 'term');
+    const academicYear = filters.academicYear ? this.clean(filters.academicYear) : null;
+    const asOfDate = this.optionalDate(filters.asOfDate) ?? new Date();
+
+    const invoices = await this.prisma.feeInvoice.findMany({
+      where: {
+        schoolId,
+        ...(academicYear ? { academicYear } : {}),
+        ...(term ? { term: term as PrismaAcademicTerm } : {}),
+      },
+      include: {
+        payments: true,
+      },
+    });
+
+    return this.toFinanceSummary(schoolId, academicYear, term ?? null, asOfDate, invoices);
+  }
+
   async recordPayment(
     currentUser: IAuthenticatedUser,
     invoiceId: string,
@@ -234,6 +358,39 @@ export class FinanceService {
     } catch (error) {
       this.handleKnownPrismaError(error, 'A payment with the same reference already exists');
     }
+  }
+
+  async reversePayment(currentUser: IAuthenticatedUser, id: string): Promise<IFeePayment> {
+    const payment = await this.getPaymentWithInvoice(id);
+
+    this.ensureTenantAccess(currentUser, payment.schoolId);
+
+    if (payment.status === PrismaPaymentStatus.REVERSED) {
+      return this.toFeePayment(payment);
+    }
+
+    if (payment.status !== PrismaPaymentStatus.COMPLETED) {
+      throw new BadRequestException('Only completed payments can be reversed');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updatedPayment = await tx.feePayment.update({
+        where: { id },
+        data: { status: PrismaPaymentStatus.REVERSED },
+      });
+      const remainingPaid = this.completedPaymentTotal(
+        payment.invoice.payments.filter((invoicePayment) => invoicePayment.id !== payment.id),
+      );
+
+      await tx.feeInvoice.update({
+        where: { id: payment.invoiceId },
+        data: {
+          status: this.invoiceStatusForPaymentTotal(Number(payment.invoice.amount), remainingPaid),
+        },
+      });
+
+      return this.toFeePayment(updatedPayment);
+    });
   }
 
   async cancelInvoice(
@@ -293,6 +450,83 @@ export class FinanceService {
     if (!currentUser.schoolId || currentUser.schoolId !== targetSchoolId) {
       throw new ForbiddenException('You cannot access finance records outside your school');
     }
+  }
+
+  private async getClassScope(classId: string): Promise<ClassFinanceScope> {
+    const schoolClass = await this.prisma.schoolClass.findUnique({
+      where: { id: classId },
+      select: {
+        schoolId: true,
+        academicYear: true,
+        isActive: true,
+      },
+    });
+
+    if (!schoolClass) {
+      throw new NotFoundException('Class not found');
+    }
+
+    return schoolClass;
+  }
+
+  private ensureClassCanReceiveInvoices(
+    schoolClass: ClassFinanceScope,
+    schoolId: string,
+    academicYear: string,
+  ): void {
+    if (schoolClass.schoolId !== schoolId) {
+      throw new ForbiddenException('You cannot generate invoices outside your school');
+    }
+
+    if (!schoolClass.isActive) {
+      throw new BadRequestException('Inactive classes cannot receive generated invoices');
+    }
+
+    if (schoolClass.academicYear !== academicYear) {
+      throw new BadRequestException('Class does not belong to the requested academic year');
+    }
+  }
+
+  private async createInvoicesForEnrollments(
+    enrollments: EnrollmentForInvoiceGeneration[],
+    schoolId: string,
+    dto: GenerateFeeInvoicesDto,
+    academicYear: string,
+    title: string,
+    createdById: string,
+  ): Promise<FeeInvoice[]> {
+    if (!enrollments.length) {
+      return [];
+    }
+
+    const description = this.optionalClean(dto.description);
+    const dueDate = this.toDateOnly(dto.dueDate);
+
+    return this.prisma.$transaction(async (tx) => {
+      const createdInvoices: FeeInvoice[] = [];
+
+      for (const enrollment of enrollments) {
+        const invoice = await tx.feeInvoice.create({
+          data: {
+            schoolId,
+            studentId: enrollment.studentId,
+            studentEnrollmentId: enrollment.id,
+            academicYear,
+            term: dto.term as PrismaAcademicTerm,
+            title,
+            description,
+            dueDate,
+            amount: dto.amount,
+            status: PrismaFeeInvoiceStatus.OPEN,
+            createdById,
+          },
+        });
+
+        createdInvoices.push(invoice);
+      }
+
+      return createdInvoices;
+    });
   }
 
   private async getActiveEnrollmentForInvoice(
@@ -380,6 +614,25 @@ export class FinanceService {
     return invoice;
   }
 
+  private async getPaymentWithInvoice(id: string): Promise<FeePaymentWithInvoiceModel> {
+    const payment = await this.prisma.feePayment.findUnique({
+      where: { id },
+      include: {
+        invoice: {
+          include: {
+            payments: true,
+          },
+        },
+      },
+    });
+
+    if (!payment) {
+      throw new NotFoundException('Fee payment not found');
+    }
+
+    return payment;
+  }
+
   private async ensureInvoiceInSchool(invoiceId: string, schoolId: string): Promise<void> {
     const invoice = await this.prisma.feeInvoice.findUnique({
       where: { id: invoiceId },
@@ -425,6 +678,20 @@ export class FinanceService {
   private optionalClean(value: string | null | undefined): string | null {
     const cleaned = value?.trim();
     return cleaned ? cleaned : null;
+  }
+
+  private optionalDate(value: string | null | undefined): Date | null {
+    if (!value) {
+      return null;
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException('Invalid finance date');
+    }
+
+    return date;
   }
 
   private toDateOnly(value: string): Date {
@@ -496,6 +763,63 @@ export class FinanceService {
       ...this.toFeeInvoice(invoice, invoice.payments),
       payments: invoice.payments.map((payment) => this.toFeePayment(payment)),
     };
+  }
+
+  private toFinanceSummary(
+    schoolId: string,
+    academicYear: string | null,
+    term: AcademicTerm | null,
+    asOfDate: Date,
+    invoices: FeeInvoiceWithPaymentsModel[],
+  ): IFinanceSummary {
+    const activeInvoices = invoices.filter(
+      (invoice) => invoice.status !== PrismaFeeInvoiceStatus.CANCELLED,
+    );
+    const invoiceBalances = activeInvoices.map((invoice) => ({
+      invoice,
+      amountPaid: this.completedPaymentTotal(invoice.payments),
+      balance: this.invoiceBalance(invoice),
+    }));
+
+    return {
+      schoolId,
+      academicYear,
+      term,
+      asOfDate,
+      totals: {
+        invoices: invoices.length,
+        openInvoices: this.countInvoicesByStatus(invoices, PrismaFeeInvoiceStatus.OPEN),
+        partiallyPaidInvoices: this.countInvoicesByStatus(
+          invoices,
+          PrismaFeeInvoiceStatus.PARTIALLY_PAID,
+        ),
+        paidInvoices: this.countInvoicesByStatus(invoices, PrismaFeeInvoiceStatus.PAID),
+        cancelledInvoices: this.countInvoicesByStatus(invoices, PrismaFeeInvoiceStatus.CANCELLED),
+        totalInvoiced: this.round2(
+          activeInvoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0),
+        ),
+        totalPaid: this.round2(
+          invoiceBalances.reduce((sum, invoiceBalance) => sum + invoiceBalance.amountPaid, 0),
+        ),
+        outstandingBalance: this.round2(
+          invoiceBalances.reduce((sum, invoiceBalance) => sum + invoiceBalance.balance, 0),
+        ),
+        overdueBalance: this.round2(
+          invoiceBalances
+            .filter(
+              ({ invoice, balance }) =>
+                balance > 0 &&
+                invoice.status !== PrismaFeeInvoiceStatus.PAID &&
+                invoice.dueDate.getTime() < asOfDate.getTime(),
+            )
+            .reduce((sum, invoiceBalance) => sum + invoiceBalance.balance, 0),
+        ),
+      },
+    };
+  }
+
+  private countInvoicesByStatus(invoices: FeeInvoice[], status: PrismaFeeInvoiceStatus): number {
+    return invoices.filter((invoice) => invoice.status === status).length;
   }
 
   private toFeePayment(payment: FeePayment): IFeePayment {

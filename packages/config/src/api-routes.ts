@@ -36,9 +36,12 @@ export const API_ROUTES = {
     CLASS_TERM: (classId: string) => `/reports/classes/${classId}/term`,
   },
   FINANCE: {
+    SUMMARY: '/finance/summary',
     INVOICES: '/finance/invoices',
+    GENERATE_INVOICES: '/finance/invoices/generate',
     INVOICE_BY_ID: (id: string) => `/finance/invoices/${id}`,
     INVOICE_PAYMENTS: (id: string) => `/finance/invoices/${id}/payments`,
     PAYMENTS: '/finance/payments',
+    REVERSE_PAYMENT: (id: string) => `/finance/payments/${id}/reverse`,
   },
 } as const;

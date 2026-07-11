@@ -15,7 +15,7 @@ This repository has a stable Phase 1 foundation, Phase 2 core entities, Phase 3 
 - Phase 2 core-entity foundation for schools, classes, students, and staff
 - Phase 3 daily-operations foundation with attendance sessions, school-scoped notifications, and basic dashboard summaries
 - Phase 4 academics foundation with school-scoped subjects, exams, result recording, and report generation
-- Phase 5 finance foundation with fee invoices, payment records, and invoice balance tracking
+- Phase 5 finance foundation with fee invoices, class invoice generation, payment records, reversals, and summary balance tracking
 
 ## Workspace Layout
 

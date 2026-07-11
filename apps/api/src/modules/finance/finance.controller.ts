@@ -1,13 +1,16 @@
-import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import {
   IAuthenticatedUser,
   IFeeInvoice,
+  IFeeInvoiceGenerationResult,
   IFeeInvoiceWithPayments,
   IFeePayment,
+  IFinanceSummary,
 } from '@school-saas/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CreateFeeInvoiceDto } from './dto/create-fee-invoice.dto';
+import { GenerateFeeInvoicesDto } from './dto/generate-fee-invoices.dto';
 import { RecordFeePaymentDto } from './dto/record-fee-payment.dto';
 import { FINANCE_ACCESS_ROLES, FinanceService } from './finance.service';
 
@@ -43,6 +46,32 @@ export class FinanceController {
     });
   }
 
+  @Post('invoices/generate')
+  @Roles(...FINANCE_ACCESS_ROLES)
+  generateInvoices(
+    @CurrentUser() currentUser: IAuthenticatedUser,
+    @Body() dto: GenerateFeeInvoicesDto,
+  ): Promise<IFeeInvoiceGenerationResult> {
+    return this.financeService.generateInvoices(currentUser, dto);
+  }
+
+  @Get('summary')
+  @Roles(...FINANCE_ACCESS_ROLES)
+  getSummary(
+    @CurrentUser() currentUser: IAuthenticatedUser,
+    @Query('schoolId') schoolId?: string,
+    @Query('academicYear') academicYear?: string,
+    @Query('term') term?: string,
+    @Query('asOfDate') asOfDate?: string,
+  ): Promise<IFinanceSummary> {
+    return this.financeService.getSummary(currentUser, {
+      schoolId,
+      academicYear,
+      term,
+      asOfDate,
+    });
+  }
+
   @Get('invoices/:id')
   @Roles(...FINANCE_ACCESS_ROLES)
   findInvoice(
@@ -69,6 +98,15 @@ export class FinanceController {
     @Body() dto: RecordFeePaymentDto,
   ): Promise<IFeePayment> {
     return this.financeService.recordPayment(currentUser, id, dto);
+  }
+
+  @Patch('payments/:id/reverse')
+  @Roles(...FINANCE_ACCESS_ROLES)
+  reversePayment(
+    @CurrentUser() currentUser: IAuthenticatedUser,
+    @Param('id') id: string,
+  ): Promise<IFeePayment> {
+    return this.financeService.reversePayment(currentUser, id);
   }
 
   @Get('payments')
