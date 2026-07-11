@@ -3,6 +3,7 @@ export * from './auth.types';
 export * from './class.types';
 export * from './dashboard.types';
 export * from './exam.types';
+export * from './finance.types';
 export * from './notification.types';
 export * from './report.types';
 export * from './school.types';

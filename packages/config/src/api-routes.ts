@@ -35,4 +35,10 @@ export const API_ROUTES = {
     STUDENT_TERM: (studentId: string) => `/reports/students/${studentId}/term`,
     CLASS_TERM: (classId: string) => `/reports/classes/${classId}/term`,
   },
+  FINANCE: {
+    INVOICES: '/finance/invoices',
+    INVOICE_BY_ID: (id: string) => `/finance/invoices/${id}`,
+    INVOICE_PAYMENTS: (id: string) => `/finance/invoices/${id}/payments`,
+    PAYMENTS: '/finance/payments',
+  },
 } as const;

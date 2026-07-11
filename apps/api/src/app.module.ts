@@ -7,6 +7,7 @@ import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { ClassesModule } from './modules/classes/classes.module';
 import { DashboardsModule } from './modules/dashboards/dashboards.module';
 import { ExamsModule } from './modules/exams/exams.module';
+import { FinanceModule } from './modules/finance/finance.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -36,6 +37,7 @@ import { UsersModule } from './modules/users/users.module';
     AuthModule,
     DashboardsModule,
     ExamsModule,
+    FinanceModule,
     UsersModule,
     NotificationsModule,
     ReportsModule,

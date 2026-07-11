@@ -70,6 +70,28 @@ enum ExamStatus {
   ARCHIVED
 }
 
+enum FeeInvoiceStatus {
+  OPEN
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  MOBILE_MONEY
+  CARD
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
 model School {
   id                 String              @id @default(uuid()) @db.Uuid
   name               String
@@ -87,6 +109,8 @@ model School {
   subjects           Subject[]
   exams              Exam[]
   examResults        ExamResult[]
+  feeInvoices        FeeInvoice[]
+  feePayments        FeePayment[]
   notifications      Notification[]
   auditLogs          AuditLog[]
 
@@ -112,6 +136,8 @@ model User {
   attendanceTaken      AttendanceSession[] @relation("AttendanceTakenBy")
   examsCreated         Exam[]              @relation("ExamCreatedBy")
   examResultsRecorded  ExamResult[]        @relation("ExamResultRecordedBy")
+  feeInvoicesCreated   FeeInvoice[]        @relation("FeeInvoiceCreatedBy")
+  feePaymentsRecorded  FeePayment[]        @relation("FeePaymentRecordedBy")
   notificationsCreated Notification[]      @relation("NotificationCreatedBy")
   notifications        Notification[]      @relation("NotificationRecipient")
 
@@ -187,6 +213,8 @@ model StudentProfile {
   enrollments       StudentEnrollment[]
   attendanceEntries AttendanceEntry[]
   examResults       ExamResult[]
+  feeInvoices       FeeInvoice[]
+  feePayments       FeePayment[]
 
   @@unique([schoolId, admissionNumber])
   @@index([schoolId, isActive])
@@ -210,6 +238,8 @@ model StudentEnrollment {
   updatedAt         DateTime          @updatedAt @map("updated_at")
   attendanceEntries AttendanceEntry[]
   examResults       ExamResult[]
+  feeInvoices       FeeInvoice[]
+  feePayments       FeePayment[]
 
   @@unique([studentId, classId, academicYear])
   @@index([schoolId, academicYear, status])
@@ -263,16 +293,16 @@ model AttendanceEntry {
 }
 
 model Subject {
-  id          String   @id @default(uuid()) @db.Uuid
-  schoolId    String   @map("school_id") @db.Uuid
-  school      School   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  name        String
-  code        String?
-  department  String?
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  exams       Exam[]
+  id         String   @id @default(uuid()) @db.Uuid
+  schoolId   String   @map("school_id") @db.Uuid
+  school     School   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  name       String
+  code       String?
+  department String?
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  exams      Exam[]
 
   @@unique([schoolId, name])
   @@unique([schoolId, code])
@@ -332,6 +362,67 @@ model ExamResult {
   @@index([studentEnrollmentId])
   @@index([recordedById])
   @@map("exam_results")
+}
+
+model FeeInvoice {
+  id                  String            @id @default(uuid()) @db.Uuid
+  schoolId            String            @map("school_id") @db.Uuid
+  school              School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  studentId           String            @map("student_id") @db.Uuid
+  student             StudentProfile    @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  studentEnrollmentId String            @map("student_enrollment_id") @db.Uuid
+  studentEnrollment   StudentEnrollment @relation(fields: [studentEnrollmentId], references: [id], onDelete: Restrict)
+  academicYear        String            @map("academic_year")
+  term                AcademicTerm
+  title               String
+  description         String?
+  dueDate             DateTime          @map("due_date") @db.Date
+  amount              Decimal           @db.Decimal(10, 2)
+  status              FeeInvoiceStatus  @default(OPEN)
+  createdById         String?           @map("created_by_id") @db.Uuid
+  createdBy           User?             @relation("FeeInvoiceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+  payments            FeePayment[]
+
+  @@unique([schoolId, studentId, academicYear, term, title])
+  @@index([schoolId, academicYear, term])
+  @@index([schoolId, status])
+  @@index([studentId, academicYear])
+  @@index([studentEnrollmentId])
+  @@index([createdById])
+  @@map("fee_invoices")
+}
+
+model FeePayment {
+  id                  String            @id @default(uuid()) @db.Uuid
+  schoolId            String            @map("school_id") @db.Uuid
+  school              School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  invoiceId           String            @map("invoice_id") @db.Uuid
+  invoice             FeeInvoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  studentId           String            @map("student_id") @db.Uuid
+  student             StudentProfile    @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  studentEnrollmentId String            @map("student_enrollment_id") @db.Uuid
+  studentEnrollment   StudentEnrollment @relation(fields: [studentEnrollmentId], references: [id], onDelete: Restrict)
+  amount              Decimal           @db.Decimal(10, 2)
+  method              PaymentMethod
+  status              PaymentStatus     @default(COMPLETED)
+  reference           String?
+  notes               String?
+  paidAt              DateTime          @default(now()) @map("paid_at")
+  recordedById        String?           @map("recorded_by_id") @db.Uuid
+  recordedBy          User?             @relation("FeePaymentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+
+  @@unique([schoolId, reference])
+  @@index([schoolId, paidAt])
+  @@index([schoolId, status])
+  @@index([invoiceId, status])
+  @@index([studentId, paidAt])
+  @@index([studentEnrollmentId])
+  @@index([recordedById])
+  @@map("fee_payments")
 }
 
 model Notification {
