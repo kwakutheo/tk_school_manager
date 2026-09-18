@@ -92,8 +92,24 @@ enum PaymentStatus {
   REVERSED
 }
 
+/// HUBTEL  — school fee collection (parent pays school)
+/// PAYSTACK — SaaS billing (school pays Scholentra)
 enum PaymentProvider {
-  MTN_MOMO
+  HUBTEL
+  PAYSTACK
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+enum BillingPeriod {
+  MONTHLY
+  ANNUAL
 }
 
 model School {
@@ -117,6 +133,7 @@ model School {
   feePayments        FeePayment[]
   notifications      Notification[]
   auditLogs          AuditLog[]
+  subscription       Subscription?
 
   @@map("schools")
 }
@@ -474,6 +491,70 @@ model RefreshToken {
 
   @@index([userId, revokedAt, expiresAt])
   @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// BILLING DOMAIN — Scholentra SaaS subscriptions (school pays Scholentra)
+// Completely separate from the Finance domain (parent pays school).
+// ---------------------------------------------------------------------------
+
+model SubscriptionPlan {
+  id            String         @id @default(uuid()) @db.Uuid
+  name          String         @unique
+  description   String?
+  priceMonthly  Decimal        @map("price_monthly") @db.Decimal(10, 2)
+  priceAnnual   Decimal        @map("price_annual") @db.Decimal(10, 2)
+  isActive      Boolean        @default(true) @map("is_active")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  subscriptions Subscription[]
+
+  @@map("subscription_plans")
+}
+
+model Subscription {
+  id                 String             @id @default(uuid()) @db.Uuid
+  schoolId           String             @unique @map("school_id") @db.Uuid
+  school             School             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  planId             String             @map("plan_id") @db.Uuid
+  plan               SubscriptionPlan   @relation(fields: [planId], references: [id])
+  status             SubscriptionStatus
+  period             BillingPeriod
+  currentPeriodStart DateTime           @map("current_period_start")
+  currentPeriodEnd   DateTime           @map("current_period_end")
+  trialEndsAt        DateTime?          @map("trial_ends_at")
+  cancelledAt        DateTime?          @map("cancelled_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  billingPayments    BillingPayment[]
+
+  @@index([status])
+  @@map("subscriptions")
+}
+
+/// SaaS billing payment record. Uses PAYSTACK.
+/// Must NOT be confused with FeePayment (school fee collection via HUBTEL).
+model BillingPayment {
+  id                    String             @id @default(uuid()) @db.Uuid
+  subscriptionId        String             @map("subscription_id") @db.Uuid
+  subscription          Subscription       @relation(fields: [subscriptionId], references: [id])
+  amount                Decimal            @db.Decimal(10, 2)
+  currency              String             @default("GHS") @db.Char(3)
+  status                PaymentStatus
+  provider              PaymentProvider
+  providerTransactionId String?            @unique @map("provider_transaction_id")
+  providerReference     String?            @map("provider_reference")
+  providerStatus        String?            @map("provider_status")
+  providerMetadata      Json?              @map("provider_metadata")
+  reference             String?            @unique
+  paidAt                DateTime?          @map("paid_at")
+  billingPeriodStart    DateTime           @map("billing_period_start")
+  billingPeriodEnd      DateTime           @map("billing_period_end")
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
+
+  @@index([subscriptionId, status])
+  @@map("billing_payments")
 }
 
 model AuditLog {

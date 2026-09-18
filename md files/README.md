@@ -1,6 +1,6 @@
-# TK School Manager
+# Scholentra
 
-Production-grade multi-school SaaS foundation for school management.
+Production-grade multi-school SaaS platform for school management.
 
 This repository has a stable Phase 1 foundation, Phase 2 core entities, Phase 3 daily operations, Phase 4 academics, and has started Phase 5 finance:
 

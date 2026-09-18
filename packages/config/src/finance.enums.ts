@@ -20,6 +20,14 @@ export enum PaymentStatus {
   REVERSED = 'REVERSED',
 }
 
+/**
+ * External payment providers used by Scholentra.
+ *
+ * HUBTEL  — school fee collection (parent pays school)
+ * PAYSTACK — SaaS billing (school pays Scholentra)
+ */
 export enum PaymentProvider {
-  MTN_MOMO = 'MTN_MOMO',
+  HUBTEL = 'HUBTEL',
+  PAYSTACK = 'PAYSTACK',
 }
+

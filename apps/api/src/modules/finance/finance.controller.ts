@@ -13,10 +13,15 @@ import { CreateFeeInvoiceDto } from './dto/create-fee-invoice.dto';
 import { GenerateFeeInvoicesDto } from './dto/generate-fee-invoices.dto';
 import { RecordFeePaymentDto } from './dto/record-fee-payment.dto';
 import { FINANCE_ACCESS_ROLES, FinanceService } from './finance.service';
+import { PaymentsService } from '../payments/payments.service';
+import { InitiateFeePaymentDto } from '../payments/dto/initiate-fee-payment.dto';
 
 @Controller('finance')
 export class FinanceController {
-  constructor(private readonly financeService: FinanceService) {}
+  constructor(
+    private readonly financeService: FinanceService,
+    private readonly paymentsService: PaymentsService,
+  ) {}
 
   @Post('invoices')
   @Roles(...FINANCE_ACCESS_ROLES)
@@ -88,6 +93,16 @@ export class FinanceController {
     @Param('id') id: string,
   ): Promise<IFeeInvoiceWithPayments> {
     return this.financeService.cancelInvoice(currentUser, id);
+  }
+
+  @Post('invoices/:id/pay')
+  @Roles(...FINANCE_ACCESS_ROLES)
+  initiateFeePayment(
+    @CurrentUser() currentUser: IAuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: InitiateFeePaymentDto,
+  ): Promise<IFeePayment> {
+    return this.paymentsService.initiateFeePayment(currentUser, id, dto);
   }
 
   @Post('invoices/:id/payments')

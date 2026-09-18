@@ -18,7 +18,6 @@ import { IAuthenticatedUser } from '@school-saas/types';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FinanceService } from './finance.service';
-import { PaymentProviderRegistry } from './payment-providers/payment-provider.types';
 
 const SCHOOL_A = '00000000-0000-0000-0000-000000000010';
 const SCHOOL_B = '00000000-0000-0000-0000-000000000020';
@@ -187,7 +186,7 @@ describe('FinanceService', () => {
 
   beforeEach(() => {
     prisma = createPrismaMock();
-    service = new FinanceService(prisma as unknown as PrismaService, {} as PaymentProviderRegistry);
+    service = new FinanceService(prisma as unknown as PrismaService);
   });
 
   it('creates a fee invoice for an active student enrollment', async () => {
@@ -842,5 +841,66 @@ describe('FinanceService', () => {
       BadRequestException,
     );
     expect(prisma.feeInvoice.update).not.toHaveBeenCalled();
+  });
+
+  describe('findInvoice', () => {
+    it('returns an invoice with its payments if it belongs to the school', async () => {
+      const mockInvoice = createInvoiceWithPayments();
+      prisma.feeInvoice.findUnique.mockResolvedValue(mockInvoice);
+
+      const result = await service.findInvoice(accountant, INVOICE_ID);
+
+      expect(prisma.feeInvoice.findUnique).toHaveBeenCalledWith({
+        where: { id: INVOICE_ID },
+        include: { payments: { orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }] } },
+      });
+      expect(result.id).toBe(INVOICE_ID);
+    });
+
+    it('throws ForbiddenException if the invoice belongs to a different school', async () => {
+      const mockInvoice = createInvoiceWithPayments({ schoolId: SCHOOL_B });
+      prisma.feeInvoice.findUnique.mockResolvedValue(mockInvoice);
+
+      await expect(service.findInvoice(accountant, INVOICE_ID)).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+  });
+
+  describe('findPayments', () => {
+    it('returns payments matching the filters', async () => {
+      const mockPayment = createPayment();
+      prisma.feePayment.findMany.mockResolvedValue([mockPayment]);
+
+      const result = await service.findPayments(accountant, {
+        status: PrismaPaymentStatus.COMPLETED,
+        method: PrismaPaymentMethod.MOBILE_MONEY,
+      });
+
+      expect(prisma.feePayment.findMany).toHaveBeenCalledWith({
+        where: {
+          schoolId: SCHOOL_A,
+          status: PrismaPaymentStatus.COMPLETED,
+          method: PrismaPaymentMethod.MOBILE_MONEY,
+        },
+        orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }],
+      });
+      expect(result).toHaveLength(1);
+      expect(result[0]?.id).toBe(PAYMENT_ID);
+    });
+
+    it('super admin can query across schools', async () => {
+      prisma.feePayment.findMany.mockResolvedValue([]);
+
+      await service.findPayments(superAdmin, {
+        schoolId: SCHOOL_B,
+      });
+
+      expect(prisma.feePayment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { schoolId: SCHOOL_B },
+        }),
+      );
+    });
   });
 });

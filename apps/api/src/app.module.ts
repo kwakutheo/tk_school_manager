@@ -8,6 +8,8 @@ import { ClassesModule } from './modules/classes/classes.module';
 import { DashboardsModule } from './modules/dashboards/dashboards.module';
 import { ExamsModule } from './modules/exams/exams.module';
 import { FinanceModule } from './modules/finance/finance.module';
+import { PaymentsModule } from './modules/payments/payments.module';
+import { BillingModule } from './modules/billing/billing.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -38,6 +40,8 @@ import { UsersModule } from './modules/users/users.module';
     DashboardsModule,
     ExamsModule,
     FinanceModule,
+    PaymentsModule,
+    BillingModule,
     UsersModule,
     NotificationsModule,
     ReportsModule,

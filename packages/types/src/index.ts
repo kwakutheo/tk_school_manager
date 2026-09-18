@@ -1,5 +1,6 @@
 export * from './attendance.types';
 export * from './auth.types';
+export * from './billing.types';
 export * from './class.types';
 export * from './dashboard.types';
 export * from './exam.types';
@@ -11,3 +12,4 @@ export * from './staff.types';
 export * from './student.types';
 export * from './subject.types';
 export * from './user.types';
+
